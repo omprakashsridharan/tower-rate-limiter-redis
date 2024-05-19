@@ -1,7 +1,7 @@
 use axum::{routing::get, Router};
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
-use tower_rate_limiter_redis::RateLimitLayer;
+use tower_rate_limiter_redis::middleware::RateLimitLayer;
 
 #[tokio::main]
 async fn main() {
