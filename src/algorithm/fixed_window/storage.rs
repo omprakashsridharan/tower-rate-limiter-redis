@@ -10,8 +10,8 @@ pub struct FixedWindowRedisStorage {
 }
 
 impl FixedWindowRedisStorage {
-    pub async fn new() -> Self {
-        let client = redis::Client::open("redis://127.0.0.1:6379/").unwrap();
+    pub async fn new(conn_url: &str) -> Self {
+        let client = redis::Client::open(conn_url).unwrap();
         let conn = client.get_multiplexed_tokio_connection().await.unwrap();
         FixedWindowRedisStorage { conn }
     }

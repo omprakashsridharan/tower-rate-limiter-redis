@@ -10,7 +10,7 @@ use tower_rate_limiter_redis::{
 
 #[tokio::main]
 async fn main() {
-    let fixed_window_redis_storage = FixedWindowRedisStorage::new().await;
+    let fixed_window_redis_storage = FixedWindowRedisStorage::new("redis://127.0.0.1:6379/").await;
     let fixed_window_limiter =
         FixedWindow::new(Duration::from_secs(10), fixed_window_redis_storage, 3);
     let middlewares = ServiceBuilder::new().layer(RateLimitLayer::new(Arc::new(RwLock::new(
