@@ -1,56 +1,63 @@
-use http::{Request, Response};
-use std::{future::Future, task::Poll};
+use std::{convert::Infallible, sync::Arc};
+
+use axum::body::Body;
+use futures::future::BoxFuture;
+use http::{response::Response, Request, StatusCode};
+use tokio::sync::RwLock;
 
 use tower::{Layer, Service};
 
-#[derive(Debug, Clone)]
-pub struct RateLimitLayer {}
+use crate::algorithm::Limiter;
 
-impl RateLimitLayer {
-    pub fn new() -> Self {
-        RateLimitLayer {}
+#[derive(Debug, Clone)]
+pub struct RateLimitLayer<L: Limiter + Send + 'static + Clone> {
+    algorithm: Arc<RwLock<L>>,
+}
+
+impl<L: Limiter + Send + 'static + Clone> RateLimitLayer<L> {
+    pub fn new(algorithm: Arc<RwLock<L>>) -> Self {
+        RateLimitLayer { algorithm }
     }
 }
 
-impl<S> Layer<S> for RateLimitLayer {
-    type Service = RateLimit<S>;
+impl<S, L: Limiter + Send + 'static + Clone> Layer<S> for RateLimitLayer<L> {
+    type Service = RateLimit<S, L>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        RateLimit::new(inner)
+        RateLimit::new(inner, self.algorithm.clone())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RateLimit<S> {
+pub struct RateLimit<S, L: Limiter + Send + 'static + Clone> {
     inner: S,
+    algorithm: Arc<RwLock<L>>,
 }
 
-impl<S> RateLimit<S> {
-    pub fn new(inner: S) -> Self {
-        RateLimit { inner }
+impl<S, L: Limiter + Send + 'static + Clone> RateLimit<S, L> {
+    pub fn new(inner: S, algorithm: Arc<RwLock<L>>) -> Self {
+        RateLimit { inner, algorithm }
     }
 
-    pub fn layer() -> RateLimitLayer {
-        RateLimitLayer::new()
+    pub fn layer(self) -> RateLimitLayer<L> {
+        RateLimitLayer::new(self.algorithm)
     }
 }
 
-#[pin_project::pin_project]
-pub struct ResponseFuture<F> {
-    #[pin]
-    response_future: F,
-}
-
-impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for RateLimit<S>
+impl<S, L> Service<Request<Body>> for RateLimit<S, L>
 where
-    S: Service<Request<ReqBody>, Response = Response<ResBody>>,
-    ResBody: Default,
+    S: Service<Request<Body>, Response = Response<Body>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+    L: Limiter + Send + 'static + Clone,
 {
-    type Response = S::Response;
+    type Response = Response<Body>;
 
-    type Error = S::Error;
+    type Error = Infallible;
 
-    type Future = ResponseFuture<S::Future>;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(
         &mut self,
@@ -59,32 +66,32 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let response_future = self.inner.call(req);
-        ResponseFuture { response_future }
-    }
-}
-
-impl<F, B, E> Future for ResponseFuture<F>
-where
-    F: Future<Output = Result<Response<B>, E>>,
-    B: Default,
-{
-    type Output = Result<Response<B>, E>;
-
-    fn poll(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        let this = self.project();
-        // check if request is within rate limit if not throw rate limit error
-
-        if 1 < 2 {
-            let res = Response::new(B::default());
-            // *res.status_mut() = StatusCode::REQUEST_TIMEOUT;
-            return Poll::Ready(Ok(res));
-        }
-
-        this.response_future.poll(cx)
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let not_ready_inner = self.inner.clone();
+        let mut ready_inner = std::mem::replace(&mut self.inner, not_ready_inner);
+        let algorithm = self.algorithm.clone();
+        Box::pin(async move {
+            let unauthorized_response: Response<Body> = Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .body(Body::empty())
+                .unwrap();
+            let lock = algorithm.read().await;
+            match lock.clone().validate_request().await {
+                Ok(is_valid) => {
+                    drop(lock);
+                    if is_valid {
+                        let future = ready_inner.call(req);
+                        let response: Response<Body> = future.await?;
+                        Ok(response)
+                    } else {
+                        Ok(unauthorized_response)
+                    }
+                }
+                Err(_) => {
+                    drop(lock);
+                    Ok(unauthorized_response)
+                }
+            }
+        })
     }
 }

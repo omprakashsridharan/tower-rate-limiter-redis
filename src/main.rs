@@ -1,11 +1,16 @@
+use std::{sync::Arc, time::Duration};
+
 use axum::{routing::get, Router};
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, sync::RwLock};
 use tower::ServiceBuilder;
-use tower_rate_limiter_redis::middleware::RateLimitLayer;
+use tower_rate_limiter_redis::{algorithm::fixed_window::FixedWindow, middleware::RateLimitLayer};
 
 #[tokio::main]
 async fn main() {
-    let middlewares = ServiceBuilder::new().layer(RateLimitLayer::new());
+    let fixed_window_limiter = FixedWindow::new(Duration::from_secs(1));
+    let middlewares = ServiceBuilder::new().layer(RateLimitLayer::new(Arc::new(RwLock::new(
+        fixed_window_limiter,
+    ))));
 
     let app = Router::new().route("/", get(root)).layer(middlewares);
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
