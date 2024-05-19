@@ -12,5 +12,6 @@ axum = "0.7.5"
 futures = "0.3.30"
 http = "1.1.0"
 pin-project = "1.1.5"
+redis = { version = "0.25.3", features = ["tokio-comp","aio", "connection-manager"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tower = "0.4.13"

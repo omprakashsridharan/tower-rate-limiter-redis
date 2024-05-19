@@ -4,6 +4,6 @@ pub struct RateLimitError {}
 
 pub trait Limiter: Send + Sync + 'static {
     fn validate_request(
-        self,
+        &mut self,
     ) -> impl std::future::Future<Output = Result<bool, RateLimitError>> + Send;
 }

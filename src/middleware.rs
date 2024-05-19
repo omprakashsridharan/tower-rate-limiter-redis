@@ -71,8 +71,8 @@ where
         let mut ready_inner = std::mem::replace(&mut self.inner, not_ready_inner);
         let algorithm = self.algorithm.clone();
         Box::pin(async move {
-            let unauthorized_response: Response<Body> = Response::builder()
-                .status(StatusCode::FORBIDDEN)
+            let too_many_requests_response: Response<Body> = Response::builder()
+                .status(StatusCode::TOO_MANY_REQUESTS)
                 .body(Body::empty())
                 .unwrap();
             let lock = algorithm.read().await;
@@ -84,12 +84,12 @@ where
                         let response: Response<Body> = future.await?;
                         Ok(response)
                     } else {
-                        Ok(unauthorized_response)
+                        Ok(too_many_requests_response)
                     }
                 }
                 Err(_) => {
                     drop(lock);
-                    Ok(unauthorized_response)
+                    Ok(too_many_requests_response)
                 }
             }
         })

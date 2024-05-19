@@ -3,11 +3,16 @@ use std::{sync::Arc, time::Duration};
 use axum::{routing::get, Router};
 use tokio::{net::TcpListener, sync::RwLock};
 use tower::ServiceBuilder;
-use tower_rate_limiter_redis::{algorithm::fixed_window::FixedWindow, middleware::RateLimitLayer};
+use tower_rate_limiter_redis::{
+    algorithm::fixed_window::{implementation::FixedWindow, storage::FixedWindowRedisStorage},
+    middleware::RateLimitLayer,
+};
 
 #[tokio::main]
 async fn main() {
-    let fixed_window_limiter = FixedWindow::new(Duration::from_secs(1));
+    let fixed_window_redis_storage = FixedWindowRedisStorage::new().await;
+    let fixed_window_limiter =
+        FixedWindow::new(Duration::from_secs(10), fixed_window_redis_storage, 3);
     let middlewares = ServiceBuilder::new().layer(RateLimitLayer::new(Arc::new(RwLock::new(
         fixed_window_limiter,
     ))));
