@@ -4,18 +4,18 @@ use tracing::{event, span, Level};
 
 use crate::algorithm::Limiter;
 
-use super::SlidingWindowStorage;
+use super::SlidingLogStorage;
 
 #[derive(Clone)]
-pub struct SlidingWindow<S: SlidingWindowStorage> {
+pub struct SlidingLog<S: SlidingLogStorage> {
     size: Duration,
     storage: S,
     max_requests: u64,
 }
 
-impl<S: SlidingWindowStorage> SlidingWindow<S> {
+impl<S: SlidingLogStorage> SlidingLog<S> {
     pub fn new(size: Duration, storage: S, max_requests: u64) -> Self {
-        SlidingWindow {
+        SlidingLog {
             size,
             storage,
             max_requests,
@@ -23,7 +23,7 @@ impl<S: SlidingWindowStorage> SlidingWindow<S> {
     }
 }
 
-impl<S: SlidingWindowStorage> Limiter for SlidingWindow<S> {
+impl<S: SlidingLogStorage> Limiter for SlidingLog<S> {
     async fn validate_request(&mut self) -> Result<bool, crate::algorithm::RateLimitError> {
         let span = span!(Level::INFO, "validate_request");
         let _ = span.enter();

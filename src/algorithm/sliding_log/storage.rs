@@ -3,22 +3,22 @@ use std::time::{self, SystemTime};
 use redis::{aio::MultiplexedConnection, AsyncCommands};
 use tracing::{event, span, Level};
 
-use super::SlidingWindowStorage;
+use super::SlidingLogStorage;
 
 #[derive(Clone, Debug)]
-pub struct SlidingWindowRedisStorage {
+pub struct SlidingLogRedisStorage {
     conn: MultiplexedConnection,
 }
 
-impl SlidingWindowRedisStorage {
+impl SlidingLogRedisStorage {
     pub async fn new(conn_url: &str) -> Self {
         let client = redis::Client::open(conn_url).unwrap();
         let conn = client.get_multiplexed_tokio_connection().await.unwrap();
-        SlidingWindowRedisStorage { conn }
+        SlidingLogRedisStorage { conn }
     }
 }
 
-impl SlidingWindowStorage for SlidingWindowRedisStorage {
+impl SlidingLogStorage for SlidingLogRedisStorage {
     async fn record_sliding_log(
         &mut self,
         size: std::time::Duration,

@@ -3,7 +3,7 @@ use std::{error::Error, time::Duration};
 pub mod implementation;
 pub mod storage;
 
-pub trait SlidingWindowStorage: Send + Sync + 'static {
+pub trait SlidingLogStorage: Send + Sync + 'static {
     fn record_sliding_log(
         &mut self,
         size: Duration,
