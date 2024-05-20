@@ -1,4 +1,5 @@
 pub mod fixed_window;
+pub mod sliding_log;
 
 pub struct RateLimitError {}
 

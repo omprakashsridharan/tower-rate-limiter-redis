@@ -4,18 +4,29 @@ use axum::{routing::get, Router};
 use tokio::{net::TcpListener, sync::RwLock};
 use tower::ServiceBuilder;
 use tower_rate_limiter_redis::{
-    algorithm::fixed_window::{implementation::FixedWindow, storage::FixedWindowRedisStorage},
+    algorithm::{
+        fixed_window::{implementation::FixedWindow, storage::FixedWindowRedisStorage},
+        sliding_log::{implementation::SlidingWindow, storage::SlidingWindowRedisStorage},
+    },
     middleware::RateLimitLayer,
 };
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    // Fixed Window
     let fixed_window_redis_storage = FixedWindowRedisStorage::new("redis://127.0.0.1:6379/").await;
-    let fixed_window_limiter =
+    let _fixed_window_limiter =
         FixedWindow::new(Duration::from_secs(60), fixed_window_redis_storage, 3);
+
+    // Sliding log
+    let sliding_window_redis_storage =
+        SlidingWindowRedisStorage::new("redis://127.0.0.1:6379/").await;
+    let sliding_window_limiter =
+        SlidingWindow::new(Duration::from_secs(5), sliding_window_redis_storage, 1);
+
     let middlewares = ServiceBuilder::new().layer(RateLimitLayer::new(Arc::new(RwLock::new(
-        fixed_window_limiter,
+        sliding_window_limiter,
     ))));
 
     let app = Router::new().route("/", get(root)).layer(middlewares);
