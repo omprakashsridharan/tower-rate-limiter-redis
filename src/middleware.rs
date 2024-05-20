@@ -1,6 +1,5 @@
 use std::{convert::Infallible, sync::Arc};
 
-use axum::body::Body;
 use futures::future::BoxFuture;
 use http::{response::Response, Request, StatusCode};
 use tokio::sync::RwLock;
@@ -44,16 +43,17 @@ impl<S, L: Limiter + Send + 'static + Clone> RateLimit<S, L> {
     }
 }
 
-impl<S, L> Service<Request<Body>> for RateLimit<S, L>
+impl<S, L, ReqBody: Default + Send + 'static, ResBody: Default + Send + 'static>
+    Service<Request<ReqBody>> for RateLimit<S, L>
 where
-    S: Service<Request<Body>, Response = Response<Body>, Error = Infallible>
+    S: Service<Request<ReqBody>, Response = Response<ResBody>, Error = Infallible>
         + Clone
         + Send
         + 'static,
     S::Future: Send + 'static,
     L: Limiter + Send + 'static + Clone,
 {
-    type Response = Response<Body>;
+    type Response = S::Response;
 
     type Error = Infallible;
 
@@ -66,14 +66,14 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let not_ready_inner = self.inner.clone();
         let mut ready_inner = std::mem::replace(&mut self.inner, not_ready_inner);
         let algorithm = self.algorithm.clone();
         Box::pin(async move {
-            let too_many_requests_response: Response<Body> = Response::builder()
+            let too_many_requests_response: Response<ResBody> = Response::builder()
                 .status(StatusCode::TOO_MANY_REQUESTS)
-                .body(Body::empty())
+                .body(ResBody::default())
                 .unwrap();
             let lock = algorithm.read().await;
             match lock.clone().validate_request().await {
@@ -81,7 +81,7 @@ where
                     drop(lock);
                     if is_valid {
                         let future = ready_inner.call(req);
-                        let response: Response<Body> = future.await?;
+                        let response: Response<ResBody> = future.await?;
                         Ok(response)
                     } else {
                         Ok(too_many_requests_response)
